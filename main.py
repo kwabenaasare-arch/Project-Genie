@@ -1,5 +1,7 @@
 import os
+import logging
 import threading
+import sentry_sdk
 from flask import Flask
 from dotenv import load_dotenv
 from slack_bolt import App
@@ -8,8 +10,19 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from ai_helper import get_ai_response
 from integrations.gmail import get_unread_emails
 from integrations.calendar import get_todays_events
+from integrations.linear import get_pending_issues
 from briefing import get_briefing
 from datetime import datetime
+
+sentry_sdk.init(
+    dsn="https://cf4ee7421ce2e3f0ece8efbff9ed002a@o4511108342022145.ingest.us.sentry.io/4511123609223168",
+    send_default_pii=True,
+    enable_logs=True,
+    traces_sample_rate=1.0,
+    profile_session_sample_rate=1.0,
+)
+
+logger = logging.getLogger(__name__)
 
 health_app = Flask(__name__)
 
@@ -28,11 +41,12 @@ HELP_TEXT = (
     "📧  *emails* — I will pull up your latest unread emails\n"
     "📅  *calendar* — I will show you what is on your schedule today\n"
     "🌅  *briefing* — I will give you a full morning summary\n"
+    "📋  *linear* — I will show you your pending Linear issues\n"
     "💬  *anything else* — Just ask and I will do my best to help\n\n"
     "I am here to make your day a little easier. What do you need?"
 )
 
-THINKING_TEXT = "Got it, give me just a moment."
+THINKING_TEXT = "I'm pondering over this I'll be with you shortly boss."
 
 ERROR_TEXT = (
     "I ran into a small issue retrieving that for you. "
@@ -48,7 +62,8 @@ def send_briefing():
         app.client.chat_postMessage(channel=SLACK_USER_ID, text=briefing)
         print("Briefing sent successfully.")
     except Exception as e:
-        print("Briefing failed: " + str(e))
+        logger.error("Briefing failed: %s", e)
+        sentry_sdk.capture_exception(e)
 
 
 def route(text, say):
@@ -60,6 +75,9 @@ def route(text, say):
         elif "calendar" in text:
             result = get_todays_events()
             say("📅 *Here is your schedule for today:*\n\n" + result)
+        elif "linear" in text:
+            result = get_pending_issues()
+            say("📋 *Here are your pending Linear issues:*\n\n" + result)
         elif "briefing" in text:
             result = get_briefing()
             say(result)
@@ -69,7 +87,8 @@ def route(text, say):
             result = get_ai_response(text)
             say(result)
     except Exception as e:
-        print("Error: " + str(e))
+        logger.error("Route error: %s", e)
+        sentry_sdk.capture_exception(e)
         say(ERROR_TEXT)
 
 
