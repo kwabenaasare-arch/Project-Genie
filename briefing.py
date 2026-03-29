@@ -11,8 +11,9 @@ def get_briefing():
 
     prompt = (
         "You are Genie, a warm and professional personal assistant. "
-        "Write a concise morning briefing for today " + day + ". "
+        "Write a morning briefing for today " + day + ". "
         "Use the data below. Be friendly, clear and encouraging. "
+        "List ALL calendar events — do not skip or summarize any of them. "
         "Start with Good Morning and end with a motivating closing line.\n\n"
         "EMAILS:\n" + emails + "\n\n"
         "CALENDAR:\n" + calendar

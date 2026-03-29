@@ -6,14 +6,16 @@ def get_todays_events():
     creds = get_credentials()
     service = build("calendar", "v3", credentials=creds)
 
-    now = datetime.now(timezone.utc).isoformat()
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
     today_end = datetime.now(timezone.utc).replace(
-        hour=23, minute=59, second=59
+        hour=23, minute=59, second=59, microsecond=0
     ).isoformat()
 
     events_result = service.events().list(
         calendarId="primary",
-        timeMin=now,
+        timeMin=today_start,
         timeMax=today_end,
         singleEvents=True,
         orderBy="startTime"
@@ -27,7 +29,13 @@ def get_todays_events():
     reply = f"You have {len(events)} event(s) today:\n"
 
     for event in events:
-        start = event["start"].get("dateTime", event["start"].get("date"))
-        reply += f"- {event['summary']} at {start}\n"
+        start_raw = event["start"].get("dateTime", event["start"].get("date"))
+        title = event.get("summary", "(No title)")
+        try:
+            dt = datetime.fromisoformat(start_raw)
+            time_str = dt.strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            time_str = start_raw
+        reply += f"- {title} at {time_str}\n"
 
     return reply
