@@ -1,48 +1,7 @@
-import hashlib
-import hmac
 import os
 
 import httpx
 import sentry_sdk
-
-
-def verify_signature(raw_body: bytes, signature: str) -> bool:
-    secret = os.environ.get("LINEAR_WEBHOOK_SECRET", "")
-    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
-
-
-def format_linear_event(payload: dict) -> str | None:
-    action = payload.get("action")          # "create" | "update" | "remove"
-    event_type = payload.get("type")        # "Issue" | "Comment" | "Project" …
-    data = payload.get("data", {})
-
-    if event_type == "Issue":
-        title = data.get("title", "Untitled")
-        state = data.get("state", {}).get("name", "Unknown")
-        url = data.get("url", "")
-        assignee = data.get("assignee", {})
-        assignee_name = assignee.get("name", "") if assignee else ""
-
-        action_label = {"create": "created", "update": "updated", "remove": "deleted"}.get(action, action)
-
-        line = f"📋 Linear issue *{action_label}*: <{url}|{title}> → *{state}*"
-        if assignee_name:
-            line += f" (assigned to {assignee_name})"
-        return line
-
-    if event_type == "Comment":
-        body = data.get("body", "")
-        issue = data.get("issue", {})
-        issue_title = issue.get("title", "an issue") if issue else "an issue"
-        url = issue.get("url", "") if issue else ""
-        user = data.get("user", {})
-        user_name = user.get("name", "Someone") if user else "Someone"
-
-        preview = body[:120] + ("…" if len(body) > 120 else "")
-        return f"💬 {user_name} commented on <{url}|{issue_title}>: _{preview}_"
-
-    return None
 
 
 def get_pending_issues() -> str:

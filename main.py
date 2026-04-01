@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import threading
 import sentry_sdk
@@ -12,17 +13,45 @@ from integrations.gmail import get_unread_emails
 from integrations.calendar import get_todays_events
 from integrations.linear import get_pending_issues
 from briefing import get_briefing
-from datetime import datetime
+
+# --- Logging -----------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
+# --- Environment -------------------------------------------------------------
+
+load_dotenv()
+
+REQUIRED_ENV_VARS = [
+    "SLACK_BOT_TOKEN",
+    "SLACK_APP_TOKEN",
+    "SLACK_USER_ID",
+    "GROQ_API_KEY",
+    "LINEAR_API_KEY",
+    "SENTRY_DSN",
+]
+
+missing = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
+if missing:
+    logger.critical("Missing required environment variables: %s", ", ".join(missing))
+    sys.exit(1)
+
+# --- Sentry ------------------------------------------------------------------
 
 sentry_sdk.init(
-    dsn="https://cf4ee7421ce2e3f0ece8efbff9ed002a@o4511108342022145.ingest.us.sentry.io/4511123609223168",
-    send_default_pii=True,
+    dsn=os.environ["SENTRY_DSN"],
+    send_default_pii=False,
     enable_logs=True,
     traces_sample_rate=1.0,
     profile_session_sample_rate=1.0,
 )
 
-logger = logging.getLogger(__name__)
+# --- Flask health endpoint ---------------------------------------------------
 
 health_app = Flask(__name__)
 
@@ -30,7 +59,7 @@ health_app = Flask(__name__)
 def health():
     return "", 200
 
-load_dotenv()
+# --- Slack bot ---------------------------------------------------------------
 
 app = App(token=os.environ["SLACK_BOT_TOKEN"])
 SLACK_USER_ID = os.environ["SLACK_USER_ID"]
@@ -55,12 +84,11 @@ ERROR_TEXT = (
 
 
 def send_briefing():
-    now = datetime.now().strftime("%H:%M")
-    print("[" + now + "] Sending morning briefing...")
+    logger.info("Sending morning briefing...")
     try:
         briefing = get_briefing()
         app.client.chat_postMessage(channel=SLACK_USER_ID, text=briefing)
-        print("Briefing sent successfully.")
+        logger.info("Briefing sent successfully.")
     except Exception as e:
         logger.error("Briefing failed: %s", e)
         sentry_sdk.capture_exception(e)
@@ -105,13 +133,19 @@ def handle_message(message, say):
 
 
 if __name__ == "__main__":
-    threading.Thread(target=lambda: health_app.run(host="0.0.0.0", port=8080), daemon=True).start()
+    threading.Thread(
+        target=lambda: health_app.run(host="0.0.0.0", port=8080),
+        daemon=True,
+    ).start()
+
     scheduler = BackgroundScheduler()
-    scheduler.add_job(send_briefing, "cron", hour=7, minute=30)
+    scheduler.add_job(send_briefing, "cron", hour=7, minute=30, timezone="GMT")
     scheduler.start()
-    print("----------------------------------------")
-    print("  Genie Personal Assistant")
-    print("  Status   : Running")
-    print("  Briefing : 7:30 AM daily")
-    print("----------------------------------------")
+
+    logger.info("----------------------------------------")
+    logger.info("  Genie Personal Assistant")
+    logger.info("  Status   : Running")
+    logger.info("  Briefing : 7:30 AM GMT daily")
+    logger.info("----------------------------------------")
+
     SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start()

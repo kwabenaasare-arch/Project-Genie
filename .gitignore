@@ -1,0 +1,14 @@
+# Secret keys — never commit these
+.env
+credentials.json
+token.json
+credentials/
+
+# Python clutter
+__pycache__/
+*.pyc
+.DS_Store
+
+
+myenv/
+venv/
